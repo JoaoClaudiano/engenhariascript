@@ -2,5 +2,5 @@ streamlit
 streamlit-code-editor
 pandas
 numpy
-matplotlib
-ploty
+plotly
+google-generativeai
