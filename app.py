@@ -2,114 +2,117 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import math
+from code_editor import code_editor
 import re
 
-# --- CONFIGURAÇÕES DE INTERFACE ---
-st.set_page_config(page_title="EngenhariaScript PRO", layout="wide", page_icon="🏗️")
+# --- CONFIGURAÇÃO DA PÁGINA ---
+st.set_page_config(page_title="EngenhariaScript IDE", layout="wide")
 
-st.markdown("""
-    <style>
-    .stTextArea textarea { font-family: 'Fira Code', monospace; background-color: #1e1e1e; color: #d4d4d4; }
-    .status-box { padding: 10px; border-radius: 5px; margin-bottom: 10px; }
-    </style>
-""", unsafe_allow_html=True)
+st.title("👨‍🔬 EngenhariaScript PRO")
+st.markdown("### Ambiente de Programação para Engenharia")
 
-# --- MOTOR DA LINGUAGEM (O TRANSPILADOR) ---
-def transpilar_para_python(codigo_pt):
-    # Dicionário de tradução de palavras-chave
-    traducoes = {
-        r'\bVARIAVEL\b': '',
-        r'\bCALCULAR\b': '',
-        r'\bSE\b': 'if',
-        r'\bENTAO\b': ':',
-        r'\bSENAO\b': 'else:',
-        r'\bPARA\b': 'for',
-        r'\bDE\b': 'in range(',
-        r'\bATE\b': ',',
-        r'\bFACA\b': '):',
-        r'\bEXIBIR\b': 'print',
-        r'\bFIM\b': '', # Python usa indentação, então FIM é visual
-        r'\bsen\(': 'np.sin(',
-        r'\bcos\(': 'np.cos(',
-        r'\braiz\(': 'math.sqrt(',
+# --- LÓGICA DO TRADUTOR (COM IDENTAÇÃO) ---
+def compilar_engenharia(codigo_pt):
+    traducao = {
+        'VARIAVEL ': '',
+        'CALCULAR ': '',
+        'SE ': 'if ',
+        ' ENTAO': ':',
+        'SENAO': 'else:',
+        'PARA ': 'for ',
+        ' DE ': ' in range(',
+        ' ATE ': ', ',
+        ' FACA': '):',
+        'EXIBIR': 'print',
+        'FIM': '#',
+        'sen': 'np.sin',
+        'cos': 'np.cos'
     }
     
-    linhas = codigo_pt.split('\n')
-    codigo_py = ["import numpy as np", "import math", "resultados_exibidos = []"]
+    linhas_py = ["import numpy as np", "saida_texto = []"]
     
-    # Substituindo comandos e ajustando o print para o Streamlit
-    for linha in linhas:
-        if not linha.strip() or linha.strip().startswith("//"): continue
+    for linha in codigo_pt.split('\n'):
+        l_traduzida = linha
+        for pt, py in traducao.items():
+            l_traduzida = l_traduzida.replace(pt, py)
         
-        linha_convertida = linha
-        for pt, py in traducoes.items():
-            linha_convertida = re.sub(pt, py, linha_convertida)
-        
-        # Captura o que seria impresso para mostrar na interface
-        if "print" in linha_convertida:
-            linha_convertida = linha_convertida.replace("print", "resultados_exibidos.append")
+        # Redireciona o print para capturarmos na interface
+        if "print" in l_traduzida:
+            l_traduzida = l_traduzida.replace("print", "saida_texto.append")
             
-        codigo_py.append(linha_convertida)
+        linhas_py.append(l_traduzida)
     
-    return "\n".join(codigo_py)
+    return "\n".join(linhas_py)
 
 # --- INTERFACE ---
-st.title("🏗️ EngenhariaScript PRO v2.0")
-st.caption("A primeira linguagem brasileira focada em introdução à engenharia.")
+col_ed, col_out = st.columns([1.2, 0.8])
 
-col_editor, col_visual = st.columns([1.2, 0.8])
+with col_ed:
+    st.write("📝 **Editor com Contagem de Linhas**")
+    
+    # Configurações do Editor Visual
+    opcoes_editor = {
+        "buttons": [{
+            "name": "Executar",
+            "feather": "Play",
+            "primary": True,
+            "showInNormalMode": True,
+            "callback": "execute"
+        }],
+        "showLineNumbers": True,
+        "tabSize": 4,
+    }
 
-with col_editor:
-    st.write("### ⌨️ Editor")
-    codigo_exemplo = """// Exemplo de Repetição e Condição
-VARIAVEL limite = 50
-PARA i DE 1 ATE 5 FACA
-    CALCULAR forca = i * 15
-    SE forca > limite ENTAO
-        EXIBIR f"Alerta: Forca {forca} acima do limite!"
+    codigo_inicial = """// Exemplo: Cálculo de Fadiga
+VARIAVEL limite = 100
+PARA i DE 1 ATE 6 FACA
+    CALCULAR tensao = i * 20
+    SE tensao > limite ENTAO
+        EXIBIR f"Falha na iteração {i}: {tensao}MPa"
     SENAO
-        EXIBIR f"Carga {forca} segura."
+        EXIBIR f"Seguro: {tensao}MPa"
+FIM
 
-// Gerar dados para gráfico
+// Gerar gráfico automático
 VARIAVEL x = np.linspace(0, 10, 100)
 VARIAVEL y = sen(x)
-GRAFICO x, y"""
-
-    codigo_usuario = st.text_area("Escreva seu código técnico em Português:", value=codigo_exemplo, height=450)
-    btn_executar = st.button("🚀 Compilar e Rodar Projeto", use_container_width=True)
-
-with col_visual:
-    st.write("### 📟 Console de Saída")
+"""
     
-    if btn_executar:
+    # Renderiza o editor avançado
+    response = code_editor(codigo_inicial, lang="python", theme="monokai", options=opcoes_editor)
+
+with col_out:
+    st.write("📊 **Console e Resultados**")
+    
+    # O botão de execução agora vem do retorno do componente code_editor
+    if response['type'] == "submit" or st.button("Executar Manualmente"):
+        codigo_usuario = response['text']
+        
         try:
             # 1. Transpilação
-            codigo_final = transpilar_para_python(codigo_usuario)
+            codigo_python = compilar_engenharia(codigo_usuario)
             
-            # 2. Execução com captura de contexto
-            contexto_global = {"np": np, "math": math}
-            exec(codigo_final, contexto_global)
+            # 2. Execução
+            escopo = {}
+            exec(codigo_python, escopo)
             
-            # 3. Exibição de Prints
-            if "resultados_exibidos" in contexto_global:
-                for res in contexto_global["resultados_exibidos"]:
-                    st.code(res, language="text")
+            # 3. Mostrar Logs
+            if "saida_texto" in escopo:
+                for msg in escopo["saida_texto"]:
+                    st.code(msg, language="text")
             
-            # 4. Exibição de Gráficos (se houver x e y no contexto)
-            if "x" in contexto_global and "y" in contexto_global:
-                st.write("📈 **Análise Gráfica:**")
-                fig, ax = plt.subplots()
-                ax.plot(contexto_global["x"], contexto_global["y"], color='red')
-                ax.grid(True)
+            # 4. Mostrar Gráfico se X e Y existirem
+            if "x" in escopo and "y" in escopo:
+                fig, ax = plt.subplots(figsize=(6, 3))
+                ax.plot(escopo["x"], escopo["y"], lw=2, color='green')
+                ax.set_title("Gráfico de Engenharia")
                 st.pyplot(fig)
                 
-            # 5. Tabela de Memória
-            st.write("📋 **Variáveis em Memória:**")
-            vars_limpas = {k: v for k, v in contexto_global.items() if k not in ['np', 'math', '__builtins__', 'resultados_exibidos', 'x', 'y']}
-            st.table(pd.DataFrame(vars_limpas.items(), columns=["Parâmetro", "Valor"]))
+            # 5. Tabela de Variáveis
+            vars_finais = {k: v for k, v in escopo.items() if k not in ['np', 'saida_texto', '__builtins__', 'x', 'y']}
+            if vars_finais:
+                st.table(pd.DataFrame(vars_finais.items(), columns=["Variável", "Valor"]))
 
         except Exception as e:
-            st.error(f"❌ Erro de Compilação: {e}")
-            st.info("Dica: Verifique se você esqueceu o ENTAO após o SE ou o FACA após o PARA.")
+            st.error(f"Erro na linha: {e}")
 
