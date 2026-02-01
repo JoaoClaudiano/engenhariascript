@@ -2,144 +2,113 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import google.generativeai as genai
+import requests
+import time
 from code_editor import code_editor
 import re
 
-# --- CONFIGURAÇÃO DA IA ---
-API_KEY = "AIzaSyBcxiv2H-nxOTsVfHabQYRsbTlRoK7UKWo" 
-try:
-    genai.configure(api_key=API_KEY)
-    model = genai.GenerativeModel('gemini-pro')
-except Exception as e:
-    st.error(f"Erro na Configuração da IA: {e}")
-    model = None
+# --- CONFIGURAÇÃO DA IA GRATUITA (Hugging Face) ---
+HF_TOKEN = "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"
+API_URL = "https://api-inference.huggingface.co/models/MistralAI/Mistral-7B-Instruct-v0.2"
+headers = {"Authorization": f"Bearer {HF_TOKEN}"}
 
-# --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="EngenhariaScript Academy", layout="wide", page_icon="🎓")
-
-# --- BANCO DE MISSÕES ---
-MISSÕES = [
-    {
-        "id": 1,
-        "titulo": "1. Estática: Cálculo de Carga",
-        "objetivo": "Calcule a tensão normal (Tensão = Força / Área).",
-        "enunciado": "Use VARIAVEL f = 5000 e a = 0.02. Calcule 'tensao' e exiba.",
-        "exemplo": "VARIAVEL f = 5000\nVARIAVEL a = 0.02\nCALCULAR tensao = f / a\nEXIBIR f'A tensão calculada é {tensao} Pa'",
-        "validação": lambda escopo: escopo.get("tensao") == 250000
-    },
-    {
-        "id": 2,
-        "titulo": "2. Lógica: Segurança de Barragem",
-        "objetivo": "Verificar nível de alerta usando SE/ENTAO.",
-        "enunciado": "Se nivel > 80, EXIBIR 'ALERTA'. Caso contrário, 'NORMAL'.",
-        "exemplo": "VARIAVEL nivel = 85\nSE nivel > 80 ENTAO\n    EXIBIR 'ALERTA MÁXIMO'\nSENAO\n    EXIBIR 'NÍVEL SEGURO'\nFIM",
-        "validação": lambda escopo: "saida_texto" in escopo
+def perguntar_ia(prompt_texto):
+    payload = {
+        "inputs": f"<s>[INST] Você é um professor de engenharia. Analise este código e explique em português de forma simples: {prompt_texto} [/INST]",
+        "parameters": {"max_new_tokens": 400, "temperature": 0.5}
     }
-]
+    try:
+        response = requests.post(API_URL, headers=headers, json=payload)
+        if response.status_code == 200:
+            res = response.json()
+            # Tratamento para diferentes formatos de retorno da API
+            if isinstance(res, list): return res[0]['generated_text'].split("[/INST]")[-1]
+            return res['generated_text'].split("[/INST]")[-1]
+        elif response.status_code == 503:
+            return "⏳ A IA está aquecendo os motores (modelo carregando). Tente novamente em 10 segundos!"
+        else:
+            return f"⚠️ Erro na conexão: {response.status_code}"
+    except:
+        return "❌ Ocorreu uma falha na comunicação com o servidor da IA."
 
-# --- MOTOR DE TRADUÇÃO ---
-def transpilador(codigo_pt):
-    traducao = {
-        'VARIAVEL ': '', 'CALCULAR ': '', 'SE ': 'if ', ' ENTAO': ':',
-        'SENAO': 'else:', 'PARA ': 'for ', ' DE ': ' in range(',
-        ' ATE ': ', ', ' FACA': '):', 'EXIBIR ': 'saida_texto.append(',
-        'FIM': '#', 'sen': 'np.sin', 'cos': 'np.cos', 'raiz': 'np.sqrt'
-    }
-    linhas_py = ["import numpy as np", "saida_texto = []"]
-    for linha in codigo_pt.split('\n'):
-        l = linha.strip()
-        if not l or l.startswith("//"): continue
-        if "EXIBIR" in l: l += ")"
-        for pt, py in traducao.items():
-            l = l.replace(pt, py)
-        linhas_py.append(l)
-    return "\n".join(linhas_py)
+# --- INTERFACE E UX ---
+st.set_page_config(page_title="EngenhariaScript Academy", layout="wide", page_icon="🏗️")
 
-# --- INTERFACE SIDEBAR ---
+# Estilo para melhorar a visualização
+st.markdown("<style>.stCodeBlock { background-color: #0e1117; }</style>", unsafe_allow_html=True)
+
 with st.sidebar:
-    st.title("🎓 Central do Aluno")
-    aba_missao, aba_ajuda = st.tabs(["🎯 Missões", "📖 Glossário"])
+    st.title("🎓 Guia do Aluno")
+    missao = st.selectbox("Selecione a Missão:", [
+        "1. Estática: Tensão", 
+        "2. Elétrica: Lei de Ohm",
+        "3. Loops: Carga Progressiva"
+    ])
     
-    with aba_missao:
-        st.write("### Trilha de Aprendizado")
-        idx = st.selectbox("Selecione a Missão:", range(len(MISSÕES)), format_func=lambda i: MISSÕES[i]["titulo"])
-        missao = MISSÕES[idx]
-        st.info(f"**Objetivo:** {missao['objetivo']}")
-        st.write(missao['enunciado'])
-        
-        if st.button("🪄 Autopreencher Exemplo"):
-            st.session_state['codigo_atual'] = missao['exemplo']
-            st.rerun()
+    st.divider()
+    st.markdown("""
+    **📜 Glossário Rápido:**
+    - `VARIAVEL`: Cria um dado.
+    - `CALCULAR`: Resolve fórmulas.
+    - `SE / ENTAO`: Decisões.
+    - `EXIBIR`: Mostra no console.
+    """)
 
-    with aba_ajuda:
-        st.markdown("""
-        **Comandos Rápidos:**
-        - `VARIAVEL x = 10`
-        - `CALCULAR y = x * 2`
-        - `SE x > 5 ENTAO ... SENAO ... FIM`
-        - `PARA i DE 1 ATE 10 FACA ... FIM`
-        - `EXIBIR "Mensagem"`
-        """)
+st.header("🏗️ IDE EngenhariaScript PRO")
 
-# --- CORPO PRINCIPAL ---
-st.header("🏗️ IDE EngenhariaScript v3.0")
+# Layout de colunas
+col_ed, col_res = st.columns([1.2, 0.8])
 
-if 'codigo_atual' not in st.session_state:
-    st.session_state['codigo_atual'] = "// Bem-vindo! Escolha uma missão ao lado.\n"
+# Gerenciamento do código no estado da sessão
+if 'codigo' not in st.session_state:
+    st.session_state['codigo'] = "// Digite seu código de engenharia aqui\nVARIAVEL força = 1000\nVARIAVEL área = 0.05\nCALCULAR tensão = força / área\nEXIBIR tensão"
 
-col_code, col_res = st.columns([1.2, 0.8])
-
-with col_code:
-    # Editor com autopreenchimento dinâmico
-    response = code_editor(st.session_state['codigo_atual'], lang="python", theme="monokai", options={"showLineNumbers": True})
+with col_ed:
+    # Editor com numeração de linhas e indentação
+    config_ed = {"showLineNumbers": True, "tabSize": 4}
+    res_editor = code_editor(st.session_state['codigo'], lang="python", theme="monokai", options=config_ed)
     
     c1, c2 = st.columns(2)
-    with c1:
-        executar = st.button("🚀 Executar Projeto", use_container_width=True)
-    with c2:
-        ajuda_ia = st.button("🤖 Pedir Ajuda ao Tutor IA", use_container_width=True)
+    executar = c1.button("🚀 Executar Projeto", use_container_width=True)
+    ajuda_ia = c2.button("🤖 Tutor IA (Mistral)", use_container_width=True)
 
 with col_res:
-    st.subheader("📟 Console & Gráficos")
+    st.subheader("📟 Console & Resultados")
     if executar:
         try:
-            py_code = transpilador(response['text'])
-            escopo = {"np": np, "pd": pd, "st": st}
-            exec(py_code, escopo)
+            # Transpilador Simples
+            codigo_pt = res_editor['text']
+            traducao = {
+                'VARIAVEL ': '', 'CALCULAR ': '', 'SE ': 'if ', ' ENTAO': ':',
+                'SENAO': 'else:', 'EXIBIR ': 'saida.append(', 'FIM': '#'
+            }
             
-            # 1. Saída de Texto
-            if "saida_texto" in escopo:
-                for msg in escopo["saida_texto"]:
-                    st.code(msg, language="text")
+            linhas_py = ["import numpy as np", "saida = []"]
+            for linha in codigo_pt.split('\n'):
+                l = linha.strip()
+                if not l or l.startswith("//"): continue
+                if "EXIBIR" in l: l += ")"
+                for pt, py in traducao.items():
+                    l = l.replace(pt, py)
+                linhas_py.append(l)
             
-            # 2. Validação de Missão
-            if missao["validação"](escopo):
-                st.balloons()
-                st.success("✅ Missão Concluída com Sucesso!")
+            # Execução
+            escopo = {"np": np, "pd": pd}
+            exec("\n".join(linhas_py), escopo)
             
-            # 3. Gráficos Automáticos
-            # Se o aluno definir vetores 'x' e 'y', o gráfico aparece
+            if "saida" in escopo:
+                for msg in escopo["saida"]:
+                    st.success(f"📟 {msg}")
+            
+            # Exemplo de gráfico automático se o aluno criar vetores x e y
             if "x" in escopo and "y" in escopo:
-                df = pd.DataFrame({'x': escopo['x'], 'y': escopo['y']})
-                fig = px.line(df, x='x', y='y', title="Gráfico de Engenharia (Interativo)")
-                fig.update_traces(line_color='#00ff00')
-                st.plotly_chart(fig, use_container_width=True)
-
+                st.plotly_chart(px.line(x=escopo['x'], y=escopo['y'], title="Gráfico do Projeto"))
+                
         except Exception as e:
-            st.error(f"Erro na execução: {e}")
+            st.error(f"Erro no código: {e}")
 
-# --- TUTOR IA ---
-if ajuda_ia and model:
-    with st.expander("🧠 Tutor Inteligente Gemini", expanded=True):
-        with st.spinner("Analisando sua lógica de engenharia..."):
-            prompt = f"""
-            Você é um professor de engenharia. Analise este código em português:
-            {response['text']}
-            O aluno está tentando resolver: {missao['objetivo']}.
-            Se houver erros de cálculo ou lógica, explique de forma pedagógica.
-            Se estiver correto, sugira um próximo passo desafiador.
-            """
-            ia_res = model.generate_content(prompt)
-            st.markdown(ia_res.text)
-
+if ajuda_ia:
+    with st.chat_message("assistant"):
+        st.write("Analisando sua lógica de engenharia...")
+        feedback = perguntar_ia(res_editor['text'])
+        st.write(feedback)
