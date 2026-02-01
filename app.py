@@ -1,118 +1,116 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+import plotly.express as px
+import google.generativeai as genai
 from code_editor import code_editor
 import re
 
-# --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="EngenhariaScript IDE", layout="wide")
+# --- CONFIGURAÇÃO DA IA (GEMINI) ---
+# Dica: No Streamlit Cloud, use st.secrets para esconder sua chave
+API_KEY = "SUA_CHAVE_AQUI" 
+genai.configure(api_key=API_KEY)
+model = genai.GenerativeModel('gemini-pro')
 
-st.title("👨‍🔬 EngenhariaScript PRO")
-st.markdown("### Ambiente de Programação para Engenharia")
+st.set_page_config(page_title="EngenhariaScript Ultimate", layout="wide", page_icon="🎓")
 
-# --- LÓGICA DO TRADUTOR (COM IDENTAÇÃO) ---
-def compilar_engenharia(codigo_pt):
-    traducao = {
-        'VARIAVEL ': '',
-        'CALCULAR ': '',
-        'SE ': 'if ',
-        ' ENTAO': ':',
-        'SENAO': 'else:',
-        'PARA ': 'for ',
-        ' DE ': ' in range(',
-        ' ATE ': ', ',
-        ' FACA': '):',
-        'EXIBIR': 'print',
-        'FIM': '#',
-        'sen': 'np.sin',
-        'cos': 'np.cos'
+# --- TRADUTOR ROBUSTO ---
+def tradutor_pro(codigo_pt, inputs):
+    dicionario = {
+        'VARIAVEL ': '', 'CALCULAR ': '', 'SE ': 'if ', ' ENTAO': ':',
+        'SENAO': 'else:', 'PARA ': 'for ', ' DE ': ' in range(',
+        ' ATE ': ', ', ' FACA': '):', 'EXIBIR': 'st.write', 'FIM': '#',
+        'sen': 'np.sin', 'cos': 'np.cos', 'raiz': 'np.sqrt'
     }
     
-    linhas_py = ["import numpy as np", "saida_texto = []"]
+    linhas_py = ["import numpy as np", "import pandas as pd"]
     
     for linha in codigo_pt.split('\n'):
-        l_traduzida = linha
-        for pt, py in traducao.items():
-            l_traduzida = l_traduzida.replace(pt, py)
+        l = linha.strip()
+        if not l or l.startswith("//"): continue
         
-        # Redireciona o print para capturarmos na interface
-        if "print" in l_traduzida:
-            l_traduzida = l_traduzida.replace("print", "saida_texto.append")
-            
-        linhas_py.append(l_traduzida)
+        # Tratamento de ENTRADA
+        if "ENTRADA" in l:
+            match = re.search(r'VARIAVEL\s+(\w+)\s+=\s+ENTRADA', l)
+            if match:
+                var_nome = match.group(1)
+                l = f"{var_nome} = {inputs.get(var_nome, 0.0)}"
+        
+        for pt, py in dicionario.items():
+            l = l.replace(pt, py)
+        linhas_py.append(l)
     
     return "\n".join(linhas_py)
 
 # --- INTERFACE ---
-col_ed, col_out = st.columns([1.2, 0.8])
+st.title("🏗️ EngenhariaScript Ultimate Edition")
+st.markdown("---")
+
+with st.sidebar:
+    st.header("🎮 Painel de Controle")
+    st.write("Configure as entradas do comando `ENTRADA`:")
+    # Aqui os alunos definem os valores que o código vai usar
+    val1 = st.number_input("Entrada: valor1", value=10.0)
+    val2 = st.number_input("Entrada: valor2", value=5.0)
+    entradas = {"valor1": val1, "valor2": val2}
+    
+    st.divider()
+    st.write("🤖 **Tutor IA**")
+    ajuda_ia = st.button("✨ Analisar meu Código com IA")
+
+col_ed, col_res = st.columns([1.1, 0.9])
 
 with col_ed:
-    st.write("📝 **Editor com Contagem de Linhas**")
-    
-    # Configurações do Editor Visual
-    opcoes_editor = {
-        "buttons": [{
-            "name": "Executar",
-            "feather": "Play",
-            "primary": True,
-            "showInNormalMode": True,
-            "callback": "execute"
-        }],
-        "showLineNumbers": True,
-        "tabSize": 4,
-    }
+    st.subheader("📝 Editor de Código")
+    codigo_init = """// Exemplo de Cálculo com IA e Entrada
+VARIAVEL valor1 = ENTRADA("valor1")
+VARIAVEL valor2 = ENTRADA("valor2")
 
-    codigo_inicial = """// Exemplo: Cálculo de Fadiga
-VARIAVEL limite = 100
-PARA i DE 1 ATE 6 FACA
-    CALCULAR tensao = i * 20
-    SE tensao > limite ENTAO
-        EXIBIR f"Falha na iteração {i}: {tensao}MPa"
-    SENAO
-        EXIBIR f"Seguro: {tensao}MPa"
+CALCULAR resultado = valor1 * valor2
+
+SE resultado > 100 ENTAO
+    EXIBIR f"Resultado {resultado} é ALTO"
+SENAO
+    EXIBIR f"Resultado {resultado} é BAIXO"
 FIM
 
-// Gerar gráfico automático
-VARIAVEL x = np.linspace(0, 10, 100)
-VARIAVEL y = sen(x)
+// Gráfico Interativo
+VARIAVEL x = np.linspace(0, 10, 20)
+VARIAVEL y = x * valor1
 """
-    
-    # Renderiza o editor avançado
-    response = code_editor(codigo_inicial, lang="python", theme="monokai", options=opcoes_editor)
+    # Editor com numeração de linha e indentação
+    ed_response = code_editor(codigo_init, lang="python", theme="monokai", height=[20, 30])
 
-with col_out:
-    st.write("📊 **Console e Resultados**")
-    
-    # O botão de execução agora vem do retorno do componente code_editor
-    if response['type'] == "submit" or st.button("Executar Manualmente"):
-        codigo_usuario = response['text']
-        
+with col_res:
+    st.subheader("📊 Resultados e Análise")
+    if st.button("🚀 Rodar Projeto", use_container_width=True):
         try:
-            # 1. Transpilação
-            codigo_python = compilar_engenharia(codigo_usuario)
+            py_code = tradutor_pro(ed_response['text'], entradas)
+            escopo = {"st": st, "np": np, "pd": pd}
+            exec(py_code, escopo)
             
-            # 2. Execução
-            escopo = {}
-            exec(codigo_python, escopo)
-            
-            # 3. Mostrar Logs
-            if "saida_texto" in escopo:
-                for msg in escopo["saida_texto"]:
-                    st.code(msg, language="text")
-            
-            # 4. Mostrar Gráfico se X e Y existirem
             if "x" in escopo and "y" in escopo:
-                fig, ax = plt.subplots(figsize=(6, 3))
-                ax.plot(escopo["x"], escopo["y"], lw=2, color='green')
-                ax.set_title("Gráfico de Engenharia")
-                st.pyplot(fig)
-                
-            # 5. Tabela de Variáveis
-            vars_finais = {k: v for k, v in escopo.items() if k not in ['np', 'saida_texto', '__builtins__', 'x', 'y']}
-            if vars_finais:
-                st.table(pd.DataFrame(vars_finais.items(), columns=["Variável", "Valor"]))
-
+                fig = px.line(x=escopo['x'], y=escopo['y'], title="Gráfico de Engenharia (Exportável)")
+                st.plotly_chart(fig)
         except Exception as e:
-            st.error(f"Erro na linha: {e}")
+            st.error(f"Erro no código: {e}")
+
+# --- LÓGICA DO TUTOR IA ---
+if ajuda_ia:
+    st.toast("IA analisando seu código...", icon="🧠")
+    prompt = f"""
+    Você é um professor de engenharia. Analise este código escrito em uma linguagem simplificada em português:
+    {ed_response['text']}
+    
+    Explique:
+    1. O que a lógica está fazendo.
+    2. Se há algum erro conceitual de engenharia.
+    3. Como o aluno pode melhorar.
+    Seja breve, motivador e técnico.
+    """
+    try:
+        response = model.generate_content(prompt)
+        st.markdown(f"### 🤖 Feedback do Tutor IA\n{response.text}")
+    except Exception as e:
+        st.warning("IA indisponível. Verifique sua Chave de API.")
 
