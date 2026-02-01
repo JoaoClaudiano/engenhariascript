@@ -8,7 +8,7 @@ import re
 
 # --- CONFIGURAÇÃO DA IA ---
 # Substitua pela sua chave ou use st.secrets["GEMINI_KEY"] no Streamlit Cloud
-API_KEY = "SUA_CHAVE_AQUI" 
+API_KEY = AIzaSyBcxiv2H-nxOTsVfHabQYRsbTlRoK7UKWo 
 try:
     genai.configure(api_key=API_KEY)
     model = genai.GenerativeModel('gemini-pro')
