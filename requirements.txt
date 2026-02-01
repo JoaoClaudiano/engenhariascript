@@ -3,3 +3,4 @@ streamlit-code-editor
 pandas
 numpy
 matplotlib
+ploty
